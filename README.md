@@ -3,20 +3,15 @@
 This is a [k6](https://github.com/grafana/k6) extension using the
 [xk6](https://github.com/grafana/xk6) system.
 
-Supported RDBMSs: `mysql`, `postgres`, `sqlite3`, `sqlserver`. See the [examples](examples)
+Supported RDBMSs: `postgres`. See the [examples](examples)
 directory for usage. Other RDBMSs are not supported, see
 [details below](#support-for-other-rdbmss).
-
 
 ## Build
 
 To build a `k6` binary with this plugin, first ensure you have the prerequisites:
 
 - [Go toolchain](https://go101.org/article/go-toolchain.html)
-- If you're using SQLite, a build toolchain for your system that includes `gcc` or
-  another C compiler. On Debian and derivatives install the `build-essential`
-  package. On Windows you can use [tdm-gcc](https://jmeubank.github.io/tdm-gcc/).
-  Make sure that `gcc` is in your `PATH`.
 - Git
 
 Then:
@@ -28,19 +23,7 @@ Then:
 
 2. Build the binary:
   ```shell
-  xk6 build --with github.com/grafana/xk6-sql
-  ```
-
-  If you're using SQLite, ensure you have a C compiler installed (see the
-  prerequisites note) and set `CGO_ENABLED=1` in the environment:
-  ```shell
-  CGO_ENABLED=1 xk6 build --with github.com/grafana/xk6-sql
-  ```
-
-  On Windows this is done slightly differently:
-  ```shell
-  set CGO_ENABLED=1
-  xk6 build --with github.com/grafana/xk6-sql
+  xk6 build --with github.com/gcfabri/xk6-sql
   ```
 
 ## Development
@@ -51,35 +34,34 @@ make
 ```
 Once built, you can run your newly extended `k6` using:
 ```shell
- ./k6 run examples/sqlite3_test.js
+ ./k6 run examples/postgres_test.js
  ```
 
 ## Example
 
 ```javascript
 // script.js
-import sql from 'k6/x/sql';
+import pgxpool from 'k6/x/pgxpool';
 
-const db = sql.open("sqlite3", "./test.db");
+// The second argument is a PostgreSQL connection string, e.g.
+// postgres://myuser:mypass@127.0.0.1:5432/postgres?sslmode=disable
+const connString = "postgres://myuser:mypass@127.0.0.1:5432/postgres?sslmode=disable"
+const minConns = 20;
+const maxConns = 30;
+
+const pool = pgxpool.open(connString, minConns, maxConns);
 
 export function setup() {
-  db.exec(`CREATE TABLE IF NOT EXISTS keyvalues (
-           id integer PRIMARY KEY AUTOINCREMENT,
-           key varchar NOT NULL,
-           value varchar);`);
+
 }
 
 export function teardown() {
-  db.close();
+
 }
 
 export default function () {
-  db.exec("INSERT INTO keyvalues (key, value) VALUES('plugin-name', 'k6-plugin-sql');");
-
-  let results = sql.query(db, "SELECT * FROM keyvalues;");
-  for (const row of results) {
-    console.log(`key: ${row.key}, value: ${row.value}`);
-  }
+  let result = pgxpool.query(pool, 'SELECT 1;');
+  console.log(`result: ${JSON.stringify(result)}`);
 }
 ```
 
@@ -88,32 +70,35 @@ Result output:
 ```shell
 $ ./k6 run script.js
 
-          /\      |‾‾| /‾‾/   /‾‾/
-     /\  /  \     |  |/  /   /  /
-    /  \/    \    |     (   /   ‾‾\
-   /          \   |  |\  \ |  (‾)  |
+          /\      |‾‾| /‾‾/   /‾‾/   
+     /\  /  \     |  |/  /   /  /    
+    /  \/    \    |     (   /   ‾‾\  
+   /          \   |  |\  \ |  (‾)  | 
   / __________ \  |__| \__\ \_____/ .io
 
   execution: local
-     script: /tmp/script.js
+     script: /Users/gabriel.fabri/Workspace/go-playground/cmd/k6/run.js
      output: -
 
   scenarios: (100.00%) 1 scenario, 1 max VUs, 10m30s max duration (incl. graceful stop):
            * default: 1 iterations for each of 1 VUs (maxDuration: 10m0s, gracefulStop: 30s)
 
-INFO[0000] key: plugin-name, value: k6-plugin-sql        source=console
+INFO[0001] result: [{"?column?":1}]                      source=console
 
-running (00m00.1s), 0/1 VUs, 1 complete and 0 interrupted iterations
-default ✓ [======================================] 1 VUs  00m00.0s/10m0s  1/1 iters, 1 per VU
+     █ setup
 
-    █ setup
+     █ teardown
 
-    █ teardown
+     data_received........: 0 B 0 B/s
+     data_sent............: 0 B 0 B/s
+     iteration_duration...: avg=436.43ms min=3.84µs med=7.59µs max=1.3s p(90)=1.04s p(95)=1.17s
+     iterations...........: 1   0.760586/s
+     vus..................: 1   min=1      max=1
+     vus_max..............: 1   min=1      max=1
 
-    data_received........: 0 B 0 B/s
-    data_sent............: 0 B 0 B/s
-    iteration_duration...: avg=9.22ms min=19.39µs med=8.86ms max=18.8ms p(90)=16.81ms p(95)=17.8ms
-    iterations...........: 1   15.292228/s
+
+running (00m01.3s), 0/1 VUs, 1 complete and 0 interrupted iterations
+default ✓ [======================================] 1 VUs  00m01.3s/10m0s  1/1 iters, 1 per VU
 ```
 
 ## See also
@@ -126,15 +111,10 @@ Note that this project is not accepting support for additional SQL implementatio
 and RDBMSs. See the discussion in [issue #17](https://github.com/grafana/xk6-sql/issues/17)
 for the reasoning.
 
-There are however forks of this project that add additional support for:
-- [Oracle](https://github.com/stefnedelchevbrady/xk6-sql-with-oracle)
-- [Snowflake](https://github.com/libertymutual/xk6-sql)
-
 You can build k6 binaries by simply specifying these project URLs in `xk6 build`.
-E.g. `CGO_ENABLED=1 xk6 build --with github.com/stefnedelchevbrady/xk6-sql-with-oracle`.
+E.g. `xk6 build --with github.com/gcfabri/xk6-sql`.
 Please report any issues with these extensions in their respective GitHub issue trackers,
-and not in grafana/xk6-sql.
-
+and not in gcfabri/xk6-sql.
 
 ## Docker
 
@@ -145,14 +125,5 @@ and run the application.
 The following command will build a custom `k6` image incorporating the `xk6-sql` extension
 built from the local source files.
 ```shell
-docker build -t grafana/k6-for-sql:latest .
-```
-Using this image, you may then execute the [examples/sqlite3_test.js](examples/sqlite3_test.js) script
-by running the following command:
-```shell
-docker run -v $PWD:/scripts -it --rm grafana/k6-for-sql:latest run /scripts/examples/sqlite3_test.js
-```
-For those on Mac or Linux, the `docker-run.sh` script simplifies the command:
-```shell
-./docker-run.sh examples/sqlite3_test.js
+docker build -t gcfabri/k6-for-sql:latest .
 ```
