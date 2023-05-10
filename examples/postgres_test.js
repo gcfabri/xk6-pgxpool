@@ -17,6 +17,7 @@ export function teardown() {
 }
 
 export default function () {
+  pgxpool.exec(pool, 'SELECT 1;');
   let result = pgxpool.query(pool, 'SELECT 1;');
   console.log(`result: ${JSON.stringify(result)}`);
 }
